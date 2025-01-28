@@ -10,6 +10,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define LED_PIN LATBbits.LATB5
+#define LED_TRIS TRISBbits.TRISB5
+#define LED_ANG ANSELBbits.ANSB5
+
 #define TIME_UNIT                200
 #define DOT_DELAY                1*TIME_UNIT
 #define DASH_DELAY               3*TIME_UNIT
@@ -26,7 +30,7 @@ uint8_t convert(char letter);
 void blink(char letter);
 
 void main(void) {
-    git
+    
     
     
     
@@ -87,7 +91,10 @@ void blink(char letter) {
         {DASH, DOT, DOT, DASH, END}, //X 
         {DASH, DOT, DASH, DASH, END}, //Y
         {DASH, DASH, DOT, DOT, END} //Z
-    }
+    };
     uint8_t i = convert(letter);
-    uint8_t pattern = morseCode[i];
+    
+    LED_PIN = 1;
+    
+
 }
