@@ -1,0 +1,64 @@
+/*
+ * File:   main.c
+ * Author: kperezmartinez
+ *
+ * Created on January 28, 2025, 2:16 PM
+ */
+
+
+#include <xc.h>
+#include <stdint.h>
+#include <stdbool.h>
+
+#define TIME_UNIT                200
+#define DOT_DELAY                1*TIME_UNIT
+#define DASH_DELAY               3*TIME_UNIT
+
+#define INTER_LETTER_DELAY       1*TIME_UNIT
+
+#define DOT                      0
+#define DASH                     1
+#define END                      2
+
+void milliSecondDelay(uint16_t ms);
+void microSecondDelay(uint16_t us);
+uint8_t convert(char letter);
+void blink(char letter);
+
+void main(void) {
+    git
+    
+    
+    
+    return;
+}
+
+void milliSecondDelay(uint16_t ms) {
+uint16_t i;
+for (i = 0; i < ms; i++) microSecondDelay(1000);
+} // end millSecond
+//*****************************************************************
+// Create a delay of 1uS and loop a number of times
+//*****************************************************************
+void microSecondDelay(uint16_t us) {
+    uint16_t i;
+    for (i = 0; i < us; i++) {
+        asm("NOP"); // 1
+        asm("NOP"); // 2
+        asm("NOP"); // 3
+        asm("NOP"); // 4
+        asm("NOP"); // 5
+
+        i = i;
+    } // end for
+} // end microSecond()
+
+uint8_t convert(char letter){
+    if (letter >= 97 && letter <= 122){
+        return letter - 97;
+    }
+}
+
+void blink(char letter){
+    
+}
