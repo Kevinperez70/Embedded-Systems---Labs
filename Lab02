@@ -40,7 +40,7 @@ void blink(char letter);
 #define DASH_DELAY               3*TIME_UNIT
 #define INTRA_MARK_DELAY         1*TIME_UNIT
 #define LETTER_DELAY             2*TIME_UNIT
-#define WORD_DELAY               6*TIME_UNIT
+#define WORD_DELAY               3*TIME_UNIT
 #define DOT                      0
 #define DASH                     1
 #define END                      2
