@@ -7,35 +7,80 @@
 
 
 #include <xc.h>
-#include <stdint.h>
+#include <stdint.h>             // look @ \Microchip\xc8\v1.38\include
 #include <stdbool.h>
 
-#define LED_PIN LATBbits.LATB5
-#define LED_TRIS TRISBbits.TRISB5
-#define LED_ANG ANSELBbits.ANSB5
+// Configuration bits
+#pragma config FOSC = INTIO67    // Oscillator Selection bits->Internal oscillator block
+#pragma config PLLCFG = OFF    // 4X PLL Enable->Oscillator used directly
+#pragma config PRICLKEN = ON    // Primary clock enable bit->Primary clock enabled
 
-#define TIME_UNIT                200
-#define DOT_DELAY                1*TIME_UNIT
-#define DASH_DELAY               3*TIME_UNIT
-
-#define INTER_LETTER_DELAY       1*TIME_UNIT
-
-#define DOT                      0
-#define DASH                     1
-#define END                      2
-
+void initPIC(void);
 void milliSecondDelay(uint16_t ms);
 void microSecondDelay(uint16_t us);
 uint8_t convert(char letter);
 void blink(char letter);
 
-void main(void) {
+#define BUTTON_PIN  PORTAbits.RA2       // always use "PORT" for inputs
+#define BUTTON_TRIS TRISAbits.TRISA2    // Make your code self-documenting
+#define BUTTON_ANG  ANSELAbits.ANSA2    // needed for digital input
+
+#define LED_PIN     LATBbits.LATB5      // always use "LAT" for outputs
+#define LED_TRIS    TRISBbits.TRISB5
+#define LED_ANG     ANSELBbits.ANSB5
+
+#define INPUT       1                   // Make code self-documenting
+#define OUTPUT      0                   // Page 135 of PIC18(L)F2X/4XK22 Data Sheet
+
+#define ANALOG      1                   // Page PIC18(L)F2X/4XK22 Data Sheet
+#define DIGITAL     0
+
+#define TIME_UNIT                200
+#define DOT_DELAY                1*TIME_UNIT
+#define DASH_DELAY               3*TIME_UNIT
+#define INTRA_MARK_DELAY         1*TIME_UNIT
+#define LETTER_DELAY             2*TIME_UNIT
+#define WORD_DELAY               6*TIME_UNIT
+#define DOT                      0
+#define DASH                     1
+#define END                      2
+
+void main(void) {    
     
+    initPIC();
+    char msg[9] = "sos help";
     
-    
-    
+    for (;;) {
+
+        LED_PIN = 1;
+
+        while (BUTTON_PIN == 1); // While button is not pressed, wait
+        while (BUTTON_PIN == 0); // The button is being held down
+
+        while (BUTTON_PIN == 1) { // Button is released
+            for (uint8_t i = 0; i < 8; i++)
+                blink(msg[i]);
+            break;
+        }
+    }
     return;
 }
+
+void initPIC(void) {
+
+    // ---------------Configure Oscillator------------------
+    OSCCONbits.IRCF2 = 1; // Internal RC Oscillator Frequency Select bits
+    OSCCONbits.IRCF1 = 1; // Set to 16Mhz
+    OSCCONbits.IRCF0 = 1; //
+    OSCTUNEbits.PLLEN = 1; // enable the 4xPLL, wicked fast 64Mhz
+
+    BUTTON_ANG = DIGITAL; // Must do for any input which is multiplex with ADC
+    BUTTON_TRIS = INPUT; // initialize DDR bit makes push button an input
+
+    LED_ANG = DIGITAL; // Not really needed because LED is an output
+    LED_TRIS = OUTPUT; // initialize DDR bit makes LED an output
+
+} // end initPIC
 
 void milliSecondDelay(uint16_t ms) {
 uint16_t i;
@@ -58,10 +103,11 @@ void microSecondDelay(uint16_t us) {
 } // end microSecond()
 
 uint8_t convert(char letter){
-    if (letter >= 97 && letter <= 122){
+    if (letter >= 97 && letter <= 122)
         return letter - 97;
-    }
-}
+    else
+        return 0;
+} //end convert
 
 void blink(char letter) {
     uint8_t morseCode[26][5] = {
@@ -92,9 +138,30 @@ void blink(char letter) {
         {DASH, DOT, DASH, DASH, END}, //Y
         {DASH, DASH, DOT, DOT, END} //Z
     };
-    uint8_t i = convert(letter);
+        
+    uint8_t iMorseCode = convert(letter);
     
-    LED_PIN = 1;
-    
-
-}
+    for (uint8_t i = 0; i < 5; i++) {
+        if (letter == 32) {  //if letter is a space
+            LED_PIN = 1;
+            milliSecondDelay(WORD_DELAY); 
+        }
+        else if (morseCode[iMorseCode][i] == DOT) {
+            LED_PIN = 0;
+            milliSecondDelay(DOT_DELAY);
+        }
+        else if (morseCode[iMorseCode][i] == DASH) {
+            LED_PIN = 0;
+            milliSecondDelay(DASH_DELAY);
+        }
+        else if (morseCode[iMorseCode][i] == END) {
+            LED_PIN = 1;
+            milliSecondDelay(LETTER_DELAY);
+            break;
+        }
+        
+        LED_PIN = 1;
+        milliSecondDelay(INTRA_MARK_DELAY);
+        
+    }//end for
+}//end blink
