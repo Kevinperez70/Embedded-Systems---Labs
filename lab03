@@ -1,0 +1,82 @@
+#include "mcc_generated_files/mcc.h"
+#pragma warning disable 520
+#pragma warning disable 1498
+
+#define SONG_LENGTH 19 // Number of notes
+#define NUM_OCTAVES 2
+
+
+#define DS4 1
+#define E4 2
+#define F4 3
+#define FS4 4
+#define G4 5
+#define GS4 6
+#define A5 7
+#define AS5 8
+#define B5 9
+#define C5 10
+#define CS5 11
+#define D5 12
+#define DS5 13
+#define E5 14
+#define F5 15
+#define FS5 16
+#define G5 17
+#define GS5 18
+#define A6 19
+#define AS6 20
+#define B6 21
+#define C6 22
+#define CS6 23
+#define D6 24
+
+#define WHOLE 62500
+#define HALF 31250
+#define QUA 15625
+#define EIGHTH 7812.5
+#define SIXT 3906.25
+#define THIR_SEC 1953.125
+
+void playSong(uint16_t note, uint16_t duration);
+
+//*****************************************************************
+//*****************************************************************
+void main(void) {
+            
+    SYSTEM_Initialize();
+
+    uint16_t notes[SONG_LENGTH] = {F4,GS4,AS5,C5,C5,AS5,AS5,GS4,G4,F4,F4,GS4,AS5,C5,DS5,GS4,AS5,GS4,C5}; // 1:1 timer counts
+    uint16_t duration[SONG_LENGTH] = {QUA,EIGHTH,QUA,WHOLE,QUA,QUA,QUA,HALF,EIGHTH,WHOLE,QUA,QUA,QUA,HALF,HALF,QUA,HALF,HALF,WHOLE};
+    
+    while (TOP_BUTTON_GetValue() == 1);
+    while (TOP_BUTTON_GetValue() == 0);             // wait for button press
+    
+    while (TOP_BUTTON_GetValue() == 1) {            // wait for release
+        for (uint8_t i = 0; i < SONG_LENGTH; i++)   // play each note at each duration
+            playSong(notes[i], duration[i]);
+        break;
+    } // end while
+    
+} // end main
+
+void playSong(uint16_t note, uint16_t duration) {
+    
+    uint16_t scale[NUM_OCTAVES*12] = {12864,12144,11472,10816,10208,9632,9088,8592,8112,7648,7232,6816,
+                                      6432,6080,5728,5408,5104,4816,4560,4288,4048,3824,3616,3408};
+   
+    TMR0_WriteTimer(0x10000 - duration);              // set duration using tmr0
+    INTCONbits.TMR0IF = 0;                            
+    while (TMR0_HasOverflowOccured() == false) {      
+        TMR1_WriteTimer(0x10000 - scale[note]);       // set note using tmr1
+        PIR1bits.TMR1IF = 0;                          
+        while (TMR1_HasOverflowOccured() == false);   
+        SPEAKER_PIN_Toggle();                         // play the note during duration
+    }
+
+    TMR0_WriteTimer(0x10000 - THIR_SEC);              // 32nd rest between each note
+    INTCONbits.TMR0IF = 0;
+    while (TMR0_HasOverflowOccured() == false);
+    SPEAKER_PIN_SetLow();
+    
+} // end playSong
