@@ -2,7 +2,7 @@
 #pragma warning disable 520
 #pragma warning disable 1498
 
-#define SONG_LENGTH 19 // Number of notes
+#define SONG_LENGTH 22 // Number of notes
 #define NUM_OCTAVES 2
 
 
@@ -34,33 +34,31 @@
 #define WHOLE 62500
 #define HALF 31250
 #define QUA 15625
-#define EIGHTH 7812.5
+#define EIGHT 7812.5
 #define SIXT 3906.25
 #define THIR_SEC 1953.125
 
-void playSong(uint16_t note, uint16_t duration);
+void playNote(uint16_t note, uint16_t duration);
 
-//*****************************************************************
-//*****************************************************************
 void main(void) {
             
     SYSTEM_Initialize();
 
-    uint16_t notes[SONG_LENGTH] = {F4,GS4,AS5,C5,C5,AS5,AS5,GS4,G4,F4,F4,GS4,AS5,C5,DS5,GS4,AS5,GS4,C5}; // 1:1 timer counts
-    uint16_t duration[SONG_LENGTH] = {QUA,EIGHTH,QUA,WHOLE,QUA,QUA,QUA,HALF,EIGHTH,WHOLE,QUA,QUA,QUA,HALF,HALF,QUA,HALF,HALF,WHOLE};
+    uint16_t notes[SONG_LENGTH] = {C5,A6,G5,F5,A6,G5,F5,A6,G5,F5,C5,C5,C6,G5,F5,C6,E5,E5,C6,G5,E5,F5}; // 1:1 timer counts
+    uint16_t duration[SONG_LENGTH] = {EIGHT,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,WHOLE,QUA,HALF,HALF,HALF,HALF,HALF+QUA,QUA,HALF,HALF,QUA,WHOLE};
     
     while (TOP_BUTTON_GetValue() == 1);
     while (TOP_BUTTON_GetValue() == 0);             // wait for button press
     
     while (TOP_BUTTON_GetValue() == 1) {            // wait for release
         for (uint8_t i = 0; i < SONG_LENGTH; i++)   // play each note at each duration
-            playSong(notes[i], duration[i]);
+            playNote(notes[i], duration[i]);
         break;
     } // end while
     
 } // end main
 
-void playSong(uint16_t note, uint16_t duration) {
+void playNote(uint16_t note, uint16_t duration) {
     
     uint16_t scale[NUM_OCTAVES*12] = {12864,12144,11472,10816,10208,9632,9088,8592,8112,7648,7232,6816,
                                       6432,6080,5728,5408,5104,4816,4560,4288,4048,3824,3616,3408};
@@ -76,7 +74,7 @@ void playSong(uint16_t note, uint16_t duration) {
 
     TMR0_WriteTimer(0x10000 - THIR_SEC);              // 32nd rest between each note
     INTCONbits.TMR0IF = 0;
-    while (TMR0_HasOverflowOccured() == false);
-    SPEAKER_PIN_SetLow();
+    while (TMR0_HasOverflowOccured() == false)
+        SPEAKER_PIN_SetLow();
     
 } // end playSong
