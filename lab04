@@ -33,6 +33,7 @@
 #define EIGHT 7812.5
 #define SIXT 3906.25
 #define THIR_SEC 1953.125
+#define DELTA 31250/256
 
 #define NUM_OCTAVES 2
 #define NUM_SONGS 1
@@ -107,42 +108,40 @@ void main(void) {
                     printf("Listen to the beat pattern.\r\n");
                     playingSong = true;
                     printf("Use the upper button to reproduce this pattern.\r\n");
-                    INTCONbits.TMR0IE = 1;
-                    uint8_t success = false;
+                    uint8_t success = true;
                     
-                    for (noteIndex; noteIndex < songLength[0]; noteIndex++) {
-                        
+                    for (noteIndex = 0; noteIndex < songLength[0]; noteIndex++) {
+
                         while (TOP_BUTTON_GetValue() == 1);
-                        
-                        while (TOP_BUTTON_GetValue() == 0) {
-                            TMR0_WriteTimer(0x000);
-                            playNote = true;
-                        }
-                        
-                        while (TOP_BUTTON_GetValue() == 1) {
-                            uint16_t pressDuration = TMR0_ReadTimer();
-                            playNote = false;
-                            
-                            if ((pressDuration < (duration[songNumber][noteIndex] + EIGHT - SIXT)) ||
-                                (pressDuration > (duration[songNumber][noteIndex] + EIGHT + SIXT))) {
-                                success = false;
-                                break;
-                            }
-                            else
-                                success = true;
-                        }
-                        
-                        if (success == false) {
-                            printf("You lose!\r\n");
+
+                        INTCONbits.TMR0IE = 0;
+                        TMR0_WriteTimer(0x0000);                        
+                        uint16_t start = TMR0;
+                        playNote = true;
+
+                        while (TOP_BUTTON_GetValue() == 0);
+                        uint16_t end = TMR0;
+                        uint16_t pressDuration = end - start;
+                        playNote = false;
+
+                        uint16_t expected = duration[songNumber][noteIndex] / 256;
+                        if ((pressDuration < expected - DELTA) || (pressDuration > expected + DELTA)) {
+                            success = false;
                             break;
                         }
-                        else
-                            printf("You win!\r\n");
+
+                        while (TOP_BUTTON_GetValue() == 1);
                     }
+                    
+                    if (success) {
+                        printf("You win!\r\n");
+                    } else {
+                        printf("You lose! Try again.\r\n");
+                    }
+                    
+                    INTCONbits.TMR0IE = 1;
                     break;
-                default:
-                    printf("Unknown key %c\r\n", cmd);
-                    break;
+                    
             }; //end switch
         }; //end if
     }; //end infinite loop
