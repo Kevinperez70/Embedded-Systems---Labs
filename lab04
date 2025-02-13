@@ -1,9 +1,6 @@
 #include "mcc_generated_files/mcc.h"
-#pragma warning disable 520 // warning: (520) function "xyz" is never called
-#pragma warning disable 1498 // fputc.c:16:: warning: (1498) pointer (unknown)
-#define NUM_OCTAVES 2
-#define MAX_SONG_LENGTH 24
-#define NUM_SONGS 4
+#pragma warning disable 520
+#pragma warning disable 1498
 
 #define DS4 1
 #define E4 2
@@ -37,36 +34,48 @@
 #define SIXT 3906.25
 #define THIR_SEC 1953.125
 
-uint8_t playingSong = false;
-uint8_t songNumber = 0;
-uint8_t incNote = 0;
-uint8_t noteIndex;
-uint16_t note[NUM_SONGS][MAX_SONG_LENGTH] = {
-        {C5,A6,G5,F5,A6,G5,F5,A6,G5,F5,C5,C5,C6,G5,F5,C6,E5,E5,C6,G5,E5,F5},
-        {C5,A6,G5,F5,A6,G5,F5,A6,G5,F5,C5,C5,C6,G5,F5,C6,E5,E5,C6,G5,E5,F5},
-        {C5,A6,G5,F5,A6,G5,F5,A6,G5,F5,C5,C5,C6,G5,F5,C6,E5,E5,C6,G5,E5,F5},
-        {C5,A6,G5,F5,A6,G5,F5,A6,G5,F5,C5,C5,C6,G5,F5,C6,E5,E5,C6,G5,E5,F5}};
+#define NUM_OCTAVES 2
+#define NUM_SONGS 1
+#define MAX_SONG_LENGTH 30 // Number of notes
 
-void myTMRISR(void);
+uint8_t playingSong = false;
+uint8_t playNote = false;
+uint8_t rest = false;
+uint8_t songNumber = 0;
+uint8_t noteIndex = 0;
+
+uint16_t scale[NUM_OCTAVES * 12] = {12864, 12144, 11472, 10816, 10208, 9632, 9088, 8592, 8112, 7648, 7232, 6816,
+                                    6432, 6080, 5728, 5408, 5104, 4816, 4560, 4288, 4048, 3824, 3616, 3408};
+uint16_t notes[NUM_SONGS][MAX_SONG_LENGTH] = {{G4,G4,G4}}; // 1:1 timer counts
+uint16_t duration[NUM_SONGS][MAX_SONG_LENGTH] = {{HALF,HALF,HALF}};
+uint8_t songLength[NUM_SONGS] = {3};
+
+void myTMR1ISR(void);
+void myTMR0ISR(void);
 
 void main(void) {
+    
     uint8_t i;
     char cmd;
-    
+
     SYSTEM_Initialize();
-    
+
     TMR1_WriteTimer(0x0000);
     PIR1bits.TMR1IF = 0;
     while (PIR1bits.TMR1IF == 0);
+    TMR0_WriteTimer(0x0000);
+    INTCONbits.TMR0IF = 0;
+    while (INTCONbits.TMR0IF == 0);
     
-    TMR1_SetInterruptHandler(myTMRISR);
+    TMR1_SetInterruptHandler(myTMR1ISR);
+    TMR0_SetInterruptHandler(myTMR0ISR);
     INTERRUPT_GlobalInterruptEnable();
     INTERRUPT_PeripheralInterruptEnable();
-    
-    for(;;) {
+
+    for (;;) {
         if (EUSART1_DataReady) {
             cmd = EUSART1_Read();
-            switch(cmd) {
+            switch (cmd) {
                 case '?':
                     printf("------------------------------\r\n");
                     printf(" TMR1 = 0x%04x\r\n", TMR1_ReadTimer());
@@ -75,62 +84,101 @@ void main(void) {
                     printf("o: k\r\n");
                     printf("Z: Reset processor\r\n");
                     printf("z: Clear the terminal\r\n");
-                    printf("p: play song once\r\n");
+                    printf("p: Play song once\r\n");
                     printf("r: Rhythm practice\r\n");
                     printf("------------------------------\r\n");
                     break;
-            
+
                 case 'p'://Play the song once
                     printf("Playing the song\r\n");
                     playingSong = true;
                     break;
 
                 case 'Z'://Resets the processor after clearing the Terminal
-                    for (i=0; i < 40; i++) printf("\r\n");
+                    for (i = 0; i < 40; i++) printf("\r\n");
                     RESET();
                     break;
-                    
+
                 case 'z'://Clears the terminal
-                    for (i=0; i < 40; i++) printf("\r\n");
+                    for (i = 0; i < 40; i++) printf("\r\n");
                     break;
-                    
+
                 case 'r':
+                    printf("Listen to the beat pattern.\r\n");
+                    playingSong = true;
+                    printf("Use the upper button to reproduce this pattern.\r\n");
+                    INTCONbits.TMR0IE = 1;
+                    uint8_t success = false;
                     
-                    
+                    for (noteIndex; noteIndex < songLength[0]; noteIndex++) {
+                        
+                        while (TOP_BUTTON_GetValue() == 1);
+                        
+                        while (TOP_BUTTON_GetValue() == 0) {
+                            TMR0_WriteTimer(0x000);
+                            playNote = true;
+                        }
+                        
+                        while (TOP_BUTTON_GetValue() == 1) {
+                            uint16_t pressDuration = TMR0_ReadTimer();
+                            playNote = false;
+                            
+                            if ((pressDuration < (duration[songNumber][noteIndex] + EIGHT - SIXT)) ||
+                                (pressDuration > (duration[songNumber][noteIndex] + EIGHT + SIXT))) {
+                                success = false;
+                                break;
+                            }
+                            else
+                                success = true;
+                        }
+                        
+                        if (success == false) {
+                            printf("You lose!\r\n");
+                            break;
+                        }
+                        else
+                            printf("You win!\r\n");
+                    }
+                    break;
                 default:
                     printf("Unknown key %c\r\n", cmd);
                     break;
-            };//end switch
-        };//end if
-    };//end infinite loop
+            }; //end switch
+        }; //end if
+    }; //end infinite loop
 } // end main
 
-void myTMRISR(void) {
-    uint16_t scale[NUM_OCTAVES*12] = {12864,12144,11472,10816,10208,9632,9088,8592,8112,7648,7232,6816,6432,6080,5728,5408,5104,4816,4560,4288,4048,3824,3616,3408};
-    uint16_t duration[NUM_SONGS][MAX_SONG_LENGTH] = {
-        {EIGHT,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,WHOLE,QUA,HALF,HALF,HALF,HALF,HALF+QUA,QUA,HALF,HALF,QUA,WHOLE},
-        {EIGHT,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,WHOLE,QUA,HALF,HALF,HALF,HALF,HALF+QUA,QUA,HALF,HALF,QUA,WHOLE},
-        {EIGHT,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,WHOLE,QUA,HALF,HALF,HALF,HALF,HALF+QUA,QUA,HALF,HALF,QUA,WHOLE},
-        {EIGHT,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,WHOLE,QUA,HALF,HALF,HALF,HALF,HALF+QUA,QUA,HALF,HALF,QUA,WHOLE}};
+void myTMR1ISR(void) {
     
-    if (playingSong == true) {
-        TMR0_WriteTimer(0x10000 - duration[songNumber][incNote]);
-        INTCONbits.TMR0IF = 0;
-        
-        while (INTCONbits.TMR0IF == 1) {
-            noteIndex = note[songNumber][incNote];
-            TMR1_WriteTimer(0x10000 - scale[noteIndex]);
-            PIR1bits.TMR1IF = 0;
-            while (PIR1bits.TMR1IF == 1) {
-                SPEAKER_PIN_Toggle();
-            };
-        };
-        
-        incNote++;
-        
+    if (playNote == true) {
+        TMR1_WriteTimer( 0x10000 - scale[ notes[songNumber][noteIndex] ] );
+        SPEAKER_PIN_Toggle();
+    }
+    
+    PIR1bits.TMR1IF = 0;
+    
+} // end myTMR1ISR
+
+void myTMR0ISR(void) {
+    
+    if (rest == true) {
         TMR0_WriteTimer(0x10000 - THIR_SEC);
-        while (INTCONbits.TMR0IF == 1) {
-            SPEAKER_PIN_SetLow();
-        };
-    };
-};
+        playNote = false;
+        rest = false;
+        noteIndex++;
+    }
+
+    else if (playingSong == true) {
+        TMR0_WriteTimer(0x10000 - duration[songNumber][noteIndex]);        
+        playNote = true;
+        rest = true;
+    } 
+    
+    if (noteIndex >= songLength[songNumber]) {
+        noteIndex = 0;
+        playingSong = false;
+    }
+    
+    INTCONbits.TMR0IF = 0;
+    
+} // end myTMR0ISR
