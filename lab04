@@ -43,12 +43,11 @@ uint8_t incNote = 0;
 uint8_t noteIndex;
 uint16_t note[NUM_SONGS][MAX_SONG_LENGTH] = {
         {C5,A6,G5,F5,A6,G5,F5,A6,G5,F5,C5,C5,C6,G5,F5,C6,E5,E5,C6,G5,E5,F5},
-        {},
-        {},
-        {}};
+        {C5,A6,G5,F5,A6,G5,F5,A6,G5,F5,C5,C5,C6,G5,F5,C6,E5,E5,C6,G5,E5,F5},
+        {C5,A6,G5,F5,A6,G5,F5,A6,G5,F5,C5,C5,C6,G5,F5,C6,E5,E5,C6,G5,E5,F5},
+        {C5,A6,G5,F5,A6,G5,F5,A6,G5,F5,C5,C5,C6,G5,F5,C6,E5,E5,C6,G5,E5,F5}};
 
-void myTMR1ISR(void);
-void myTMR0ISR(void);
+void myTMRISR(void);
 
 void main(void) {
     uint8_t i;
@@ -60,8 +59,7 @@ void main(void) {
     PIR1bits.TMR1IF = 0;
     while (PIR1bits.TMR1IF == 0);
     
-    TMR1_SetInterruptHandler(myTMR1ISR);
-    TMR0_SetInterruptHandler(myTMR0ISR);
+    TMR1_SetInterruptHandler(myTMRISR);
     INTERRUPT_GlobalInterruptEnable();
     INTERRUPT_PeripheralInterruptEnable();
     
@@ -107,33 +105,32 @@ void main(void) {
     };//end infinite loop
 } // end main
 
-void myTMR1ISR(void) {
+void myTMRISR(void) {
     uint16_t scale[NUM_OCTAVES*12] = {12864,12144,11472,10816,10208,9632,9088,8592,8112,7648,7232,6816,6432,6080,5728,5408,5104,4816,4560,4288,4048,3824,3616,3408};
-    
-    if (playingSong == true) {
-        noteIndex = note[songNumber][incNote];
-        TMR1_WriteTimer(0x10000 - scale[noteIndex]);
-        SPEAKER_PIN_Toggle();
-    };
-    
-    TMR0_InterruptHandler();
-    PIR1bits.TMR1IF = 0;
-};
-
-void myTMR0ISR(void) {
     uint16_t duration[NUM_SONGS][MAX_SONG_LENGTH] = {
         {EIGHT,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,WHOLE,QUA,HALF,HALF,HALF,HALF,HALF+QUA,QUA,HALF,HALF,QUA,WHOLE},
-        {},
-        {},
-        {}};
+        {EIGHT,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,WHOLE,QUA,HALF,HALF,HALF,HALF,HALF+QUA,QUA,HALF,HALF,QUA,WHOLE},
+        {EIGHT,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,WHOLE,QUA,HALF,HALF,HALF,HALF,HALF+QUA,QUA,HALF,HALF,QUA,WHOLE},
+        {EIGHT,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,WHOLE,QUA,HALF,HALF,HALF,HALF,HALF+QUA,QUA,HALF,HALF,QUA,WHOLE}};
     
     if (playingSong == true) {
         TMR0_WriteTimer(0x10000 - duration[songNumber][incNote]);
+        INTCONbits.TMR0IF = 0;
+        
+        while (INTCONbits.TMR0IF == 1) {
+            noteIndex = note[songNumber][incNote];
+            TMR1_WriteTimer(0x10000 - scale[noteIndex]);
+            PIR1bits.TMR1IF = 0;
+            while (PIR1bits.TMR1IF == 1) {
+                SPEAKER_PIN_Toggle();
+            };
+        };
+        
         incNote++;
+        
+        TMR0_WriteTimer(0x10000 - THIR_SEC);
+        while (INTCONbits.TMR0IF == 1) {
+            SPEAKER_PIN_SetLow();
+        };
     };
-    
-    playingSong = false;
-    TMR0_WriteTimer(0x10000 - THIR_SEC);
-    
-    INTCONbits.TMR0IF = 0;
 };
