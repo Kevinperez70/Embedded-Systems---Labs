@@ -1,0 +1,139 @@
+#include "mcc_generated_files/mcc.h"
+#pragma warning disable 520 // warning: (520) function "xyz" is never called
+#pragma warning disable 1498 // fputc.c:16:: warning: (1498) pointer (unknown)
+#define NUM_OCTAVES 2
+#define MAX_SONG_LENGTH 24
+#define NUM_SONGS 4
+
+#define DS4 1
+#define E4 2
+#define F4 3
+#define FS4 4
+#define G4 5
+#define GS4 6
+#define A5 7
+#define AS5 8
+#define B5 9
+#define C5 10
+#define CS5 11
+#define D5 12
+#define DS5 13
+#define E5 14
+#define F5 15
+#define FS5 16
+#define G5 17
+#define GS5 18
+#define A6 19
+#define AS6 20
+#define B6 21
+#define C6 22
+#define CS6 23
+#define D6 24
+
+#define WHOLE 62500
+#define HALF 31250
+#define QUA 15625
+#define EIGHT 7812.5
+#define SIXT 3906.25
+#define THIR_SEC 1953.125
+
+uint8_t playingSong = false;
+uint8_t songNumber = 0;
+uint8_t incNote = 0;
+uint8_t noteIndex;
+uint16_t note[NUM_SONGS][MAX_SONG_LENGTH] = {
+        {C5,A6,G5,F5,A6,G5,F5,A6,G5,F5,C5,C5,C6,G5,F5,C6,E5,E5,C6,G5,E5,F5},
+        {},
+        {},
+        {}};
+
+void myTMR1ISR(void);
+void myTMR0ISR(void);
+
+void main(void) {
+    uint8_t i;
+    char cmd;
+    
+    SYSTEM_Initialize();
+    
+    TMR1_WriteTimer(0x0000);
+    PIR1bits.TMR1IF = 0;
+    while (PIR1bits.TMR1IF == 0);
+    
+    TMR1_SetInterruptHandler(myTMR1ISR);
+    TMR0_SetInterruptHandler(myTMR0ISR);
+    INTERRUPT_GlobalInterruptEnable();
+    INTERRUPT_PeripheralInterruptEnable();
+    
+    for(;;) {
+        if (EUSART1_DataReady) {
+            cmd = EUSART1_Read();
+            switch(cmd) {
+                case '?':
+                    printf("------------------------------\r\n");
+                    printf(" TMR1 = 0x%04x\r\n", TMR1_ReadTimer());
+                    printf("------------------------------\r\n");
+                    printf("?: Help menu\r\n");
+                    printf("o: k\r\n");
+                    printf("Z: Reset processor\r\n");
+                    printf("z: Clear the terminal\r\n");
+                    printf("p: play song once\r\n");
+                    printf("r: Rhythm practice\r\n");
+                    printf("------------------------------\r\n");
+                    break;
+            
+                case 'p'://Play the song once
+                    printf("Playing the song\r\n");
+                    playingSong = true;
+                    break;
+
+                case 'Z'://Resets the processor after clearing the Terminal
+                    for (i=0; i < 40; i++) printf("\r\n");
+                    RESET();
+                    break;
+                    
+                case 'z'://Clears the terminal
+                    for (i=0; i < 40; i++) printf("\r\n");
+                    break;
+                    
+                case 'r':
+                    
+                    
+                default:
+                    printf("Unknown key %c\r\n", cmd);
+                    break;
+            };//end switch
+        };//end if
+    };//end infinite loop
+} // end main
+
+void myTMR1ISR(void) {
+    uint16_t scale[NUM_OCTAVES*12] = {12864,12144,11472,10816,10208,9632,9088,8592,8112,7648,7232,6816,6432,6080,5728,5408,5104,4816,4560,4288,4048,3824,3616,3408};
+    
+    if (playingSong == true) {
+        noteIndex = note[songNumber][incNote];
+        TMR1_WriteTimer(0x10000 - scale[noteIndex]);
+        SPEAKER_PIN_Toggle();
+    };
+    
+    TMR0_InterruptHandler();
+    PIR1bits.TMR1IF = 0;
+};
+
+void myTMR0ISR(void) {
+    uint16_t duration[NUM_SONGS][MAX_SONG_LENGTH] = {
+        {EIGHT,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,HALF,WHOLE,QUA,HALF,HALF,HALF,HALF,HALF+QUA,QUA,HALF,HALF,QUA,WHOLE},
+        {},
+        {},
+        {}};
+    
+    if (playingSong == true) {
+        TMR0_WriteTimer(0x10000 - duration[songNumber][incNote]);
+        incNote++;
+    };
+    
+    playingSong = false;
+    TMR0_WriteTimer(0x10000 - THIR_SEC);
+    
+    INTCONbits.TMR0IF = 0;
+};
