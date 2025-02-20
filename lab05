@@ -1,0 +1,133 @@
+#include "mcc_generated_files/mcc.h"
+#include <inttypes.h>
+#pragma warning disable 520 // warning: (520) function "xyz" is never called
+#pragma warning disable 1498 // fputc.c:16:: warning: (1498) pointer (unknown)
+
+#define NUM_COLOR 6
+//----------------------------------------------
+// Main "function"
+//----------------------------------------------
+uint8_t colorTour = false;
+uint8_t currentEdge = 0;
+uint8_t step = 0;
+volatile uint8_t red, green, blue;
+
+void myTMR2ISR(void);
+
+void main(void) {
+    char cmd;
+    SYSTEM_Initialize();
+    
+    TMR0_WriteTimer(0x0000);
+    INTCONbits.TMR0IF = 0;
+    while(TMR0_HasOverflowOccured() == false);
+    
+    TMR2_WriteTimer(0x00);
+    PIR1bits.TMR2IF = 0;
+    T2CONbits.T2CKPS = 0b10;
+    while(PIR1bits.TMR2IF == 0);
+    TMR2_SetInterruptHandler(myTMR2ISR);
+    INTERRUPT_GlobalInterruptEnable();
+    INTERRUPT_PeripheralInterruptEnable();
+
+    for (;;) {
+        if (EUSART1_DataReady) { // wait for incoming data on USART
+            cmd = EUSART1_Read();
+            switch (cmd) { // and do what it tells you to do
+                case '?':
+                    printf("------------------------------\r\n");
+                    printf("?: Help menu\r\n");
+                    printf("Z: Reset processor\r\n");
+                    printf("z: Clear the terminal\r\n");
+                    printf("R/r: increase/decrease Red intesity\r\n");
+                    printf("G/g: increase/decrease Green intesity\r\n");
+                    printf("B/b: increase/decrease Blue intesity\r\n");
+                    printf("C/c: start/stop color cycle\r\n");
+                    printf("a: All LEDs off\r\n");
+                    printf("+/-: increase/decrease the color tour speed.\r\n");
+                    printf("------------------------------\r\n");
+                    break;
+                
+                case 'r':
+                    red += -0x0001;
+                
+                case 'R':
+                    red += 0x0001;
+                    
+                case 'g':
+                    green += -0x0001;
+                    
+                case 'G':
+                    green += 0x0001;
+                    
+                case 'b':
+                    blue += -0x0001;
+                    
+                case 'B':
+                    blue += 0x0001;
+                    
+                case 'c':
+                    colorTour = false;
+                    
+                case 'C':
+                    colorTour = true;
+                    
+//                case "a":
+//                    
+//                    
+//                case '+':
+//                    
+//                    
+//                case '-':
+                    
+                    
+                case 'Z':
+                    for (uint8_t i = 0; i < 40; i++) printf("\n");
+                    RESET();
+                    break;
+                    //--------------------------------------------
+                    // Clear the terminal
+                    //--------------------------------------------
+                case 'z':
+                    for (uint8_t i = 0; i < 40; i++) printf("\n");
+                    break;
+                    
+                default:
+                    printf("Unknown key %c\r\n", cmd);
+                    break;
+            } // end switch
+        } // end if
+    } // end while
+} // end main
+
+void myTMR2ISR(void) {
+    uint16_t deltaRed[NUM_COLOR] = {0x0000, 0x0000, 0x0001, 0x0000, 0x0000, -0x0001};
+    uint16_t deltaGre[NUM_COLOR] = {0x0001, 0x0000, 0x0000, -0x0001, 0x0000, 0x0000};
+    uint16_t deltaBlu[NUM_COLOR] = {0x0000, -0x0001, 0x0000, 0x0000, 0x0001, 0x0000};
+    uint16_t initRed[NUM_COLOR] = {0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF};
+    uint16_t initGre[NUM_COLOR] = {0x00, 0xFF, 0xFF, 0xFF, 0x00, 0x00};
+    uint16_t initBlu[NUM_COLOR] = {0xFF, 0xFF, 0x00, 0x00, 0x00, 0xFF};
+
+    if (colorTour) {
+        red += deltaRed[currentEdge];
+        green += deltaGre[currentEdge];
+        blue += deltaBlu[currentEdge];
+        
+        // Set PWM duty cycle
+        printf("it works");
+        
+        step++;
+        if (step >= 256) {
+            step = 0;
+            currentEdge = (currentEdge + 1) % NUM_COLOR;
+            
+            red = initRed[currentEdge];
+            blue = initBlu[currentEdge];
+            green = initGre[currentEdge];
+        }
+        
+    }
+    
+    
+    PIR1bits.TMR2IF = 0;
+};
