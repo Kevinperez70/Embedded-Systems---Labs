@@ -1,0 +1,255 @@
+#include "mcc_generated_files/mcc.h"
+#pragma warning disable 520     // warning: (520) function "xyz" is never called  3
+#pragma warning disable 1498    // fputc.c:16:: warning: (1498) pointer (unknown)
+
+#define LED_ON      25 
+#define LED_OFF     0
+#define MAX_BUFFER_SIZE 20
+
+//Declarations
+void myEUSART2ISR(void);
+void transmitCharacterOverIR(char letter, uint16_t baudRate);
+uint8_t recieveBusy = false;
+uint8_t recieveNewMessage = false;
+uint8_t recieveCheckSum;
+uint8_t transmitCheckSum;
+uint8_t bufferIndex;
+uint16_t bitPeriod[6] = {53333, 13333, 6666, 3333, 1666, 833};
+char IRrecieveBuffer[MAX_BUFFER_SIZE];
+char IRtransmitBuffer[MAX_BUFFER_SIZE];
+char recievedChar;
+
+//Main function
+void main(void) {
+    uint8_t baudRateSelected = 1;
+    uint8_t i;
+    char cmd;
+    char letter = '0';
+
+    SYSTEM_Initialize();
+    EPWM2_LoadDutyValue(LED_OFF);
+
+    // Delay so the Baud rate generator is stable and prints the splash screen correctly
+    TMR1_WriteTimer(0);
+    PIR1bits.TMR1IF = 0;
+    while (TMR1_HasOverflowOccured() == false);
+
+    // Since EUSART2 is double buffered, clear out any garbage with two reads from those buffers
+    if (EUSART2_DataReady) (void) EUSART2_Read();
+    if (EUSART2_DataReady) (void) EUSART2_Read();
+
+    PIE3bits.RC2IE = 0;
+    EUSART2_SetRxInterruptHandler(myEUSART2ISR);
+    PIE3bits.RC2IE = 1;    
+    INTERRUPT_PeripheralInterruptEnable();
+    INTERRUPT_GlobalInterruptEnable();
+    
+    for (;;) {
+
+        if (EUSART1_DataReady) { // wait for incoming data on USART
+            cmd = EUSART1_Read();
+            switch (cmd) { // and do what it tells you to do
+
+                    //--------------------------------------------
+                    // Reply with help menu
+                    //--------------------------------------------
+                case '?':
+                    printf("-------------------------------------------------\r\n");
+                    switch (baudRateSelected) {
+                        case 0: printf("300 Baud\r\n");
+                            break;
+                        case 1: printf("1200 Baud\r\n");
+                            break;
+                        case 2: printf("2400 Baud\r\n");
+                            break;
+                        case 3: printf("4800 Baud\r\n");
+                            break;                                           
+                        case 4: printf("9600 Baud\r\n");
+                            break;
+                        case 5: printf("19200 Baud\r\n");
+                            break;
+                        default: printf("1200 Baud\r\n");
+                            break;
+                    }
+                    printf("recieveNewMessage = true\r\n");
+                    recieveNewMessage = true;
+                    
+                    printf("-------------------------------------------------\r\n");
+                    printf("?: help menu\r\n");
+                    printf("o: k\r\n");
+                    printf("Z: Reset processor\r\n");
+                    printf("z: Clear the terminal\r\n");
+                    printf("b: set the Baud rate of the sent characters\r\n");
+                    printf("r: reset EUSART2\r\n");
+                    printf("m: Enter in transmit Message\r\n");
+                    printf("S: Send message in foreground\r\n");
+                    printf("R: Recieve message using EUSART2 ISR via IR decoder\r\n");
+                    printf("-------------------------------------------------\r\n");
+                    break;
+
+                    //--------------------------------------------
+                    // Reply with "ok", used for PC to PIC test
+                    //--------------------------------------------
+                case 'o':
+                    printf("o:	ok\r\n");
+                    break;
+
+                    //--------------------------------------------
+                    // Reset the processor after clearing the terminal
+                    //--------------------------------------------                      
+                case 'Z':
+                    for (i = 0; i < 40; i++) printf("\n");
+                    RESET();
+                    break;
+
+                    //--------------------------------------------
+                    // Clear the terminal
+                    //--------------------------------------------                      
+                case 'z':
+                    for (i = 0; i < 40; i++) printf("\n");
+                    break;
+
+                    //--------------------------------------------
+                    // Set the Baud rate - use MCC EUSART2 configuration register tab            
+                    //--------------------------------------------                    
+                case 'b':
+                    printf("Choose the index of the target baud rate\r\n");
+                    printf("0: 300 baud\r\n");
+                    printf("1: 1200 baud\r\n");
+                    printf("2: 2400 baud\r\n");
+                    printf("3: 4800 baud\r\n");                    
+                    printf("4: 9600 baud\r\n");
+                    printf("5: 19200 baud\r\n");
+                    while (EUSART1_DataReady);
+                    baudRateSelected = EUSART1_Read() - '0';
+                    switch (baudRateSelected) {
+                        case 0: SPBRGH2 = 0xD0;
+                            SPBRG2 = 0x54;
+                            break;
+                        case 1: SPBRGH2 = 0x34;
+                            SPBRG2 = 0x14;
+                            break;
+                        case 2: SPBRGH2 = 0x1A;
+                            SPBRG2 = 0x0A;
+                            break;
+                        case 3: SPBRGH2 = 0x0D;
+                            SPBRG2 = 0x05;
+                            break;                            
+                        case 4: SPBRGH2 = 0x06;
+                            SPBRG2 = 0x82;
+                            break;
+                        case 5: SPBRGH2 = 0x03;
+                            SPBRG2 = 0x40;
+                            break;
+                        default: SPBRGH2 = 0x34;
+                            SPBRG2 = 0x14;
+                            break;
+                    }
+                    printf("Baud rate assigned %02x:%02x\r\n", SPBRGH2, SPBRG2);
+                    break;
+
+                case 'm':
+                    uint8_t index = 0;
+                    printf("Enter a message, hit return when done\r\n>");
+                    
+                    while (true) {
+                        while (EUSART1_DataReady);
+                        char newChar = EUSART1_Read();
+
+                        if (index < MAX_BUFFER_SIZE - 1 && newChar != '\r') {
+                            IRtransmitBuffer[index] = newChar;
+                            transmitCheckSum += newChar;
+                            EUSART1_Write(newChar);
+                        } else {
+                            break;
+                        }
+                        
+                        index++;
+                    }
+                    
+                    IRtransmitBuffer[index + 1] = '\0';
+                    IRtransmitBuffer[index + 2] = transmitCheckSum;
+                    
+                    printf("\r\nCreated\r\n     Message: %s\r\n     CheckSum: %u\r\n\r\n", IRtransmitBuffer, transmitCheckSum);       
+                    break;
+                    
+                case 'S':
+                    for (uint8_t i = 0; i < MAX_BUFFER_SIZE; i++) {
+                        transmitCharacterOverIR(IRtransmitBuffer[i], baudRateSelected);
+                    }
+                    printf("Transmitted all the data");
+                    
+                    break;
+                    
+                case 'R':
+                    if (recieveNewMessage) {
+                        
+                    }
+                    break;
+               
+                case 'r':
+                    RCSTA2bits.CREN = 0; // Try restarting EUSART2
+                    RCSTA2bits.CREN = 1;
+                    printf("Just reset EUSART2\r\n");
+                    break;
+
+                    //--------------------------------------------
+                    // If something unknown is hit, tell user
+                    //--------------------------------------------
+                default:
+                    printf("Unknown key %c\r\n", cmd);
+                    break;
+
+            } // end switch            
+        } // end if
+    } // end while 
+} // end main
+
+void myEUSART2ISR(void) {
+    recievedChar = EUSART2_Read();
+    
+    if (!recieveBusy) {
+        recieveBusy = true;
+        bufferIndex = 0;
+    }
+    
+    if (bufferIndex < MAX_BUFFER_SIZE - 2) {
+        IRrecieveBuffer[bufferIndex] = recievedChar;
+        bufferIndex++;
+        EUSART2_Write(recievedChar);
+    }
+    
+    if (bufferIndex >= 2 && IRrecieveBuffer[bufferIndex - 1] == '\0') {
+        recieveBusy = false;
+        recieveNewMessage = true;
+    }
+    
+    
+}
+
+//Functions
+void transmitCharacterOverIR(char letter, uint16_t baudRate) {
+    uint8_t mask;
+    EPWM2_LoadDutyValue(LED_ON);
+    TMR1_WriteTimer(0x10000 - bitPeriod[baudRate]);
+    PIR1bits.TMR1IF = 0;
+    while (TMR1_HasOverflowOccured() == false);
+
+    // LSB first
+    mask = 0b00000001;
+    while (mask != 0) {
+        if ((letter & mask) != 0) EPWM2_LoadDutyValue(LED_OFF);
+        else EPWM2_LoadDutyValue(LED_ON);
+        mask = mask << 1;
+        TMR1_WriteTimer(0x10000 - bitPeriod[baudRate]);
+        PIR1bits.TMR1IF = 0;
+        while (TMR1_HasOverflowOccured() == false);
+    }
+
+    // Need a stop bit to break up successive bytes
+    EPWM2_LoadDutyValue(LED_OFF);
+    TMR1_WriteTimer(0x10000 - bitPeriod[baudRate]);
+    PIR1bits.TMR1IF = 0;
+    while (TMR1_HasOverflowOccured() == false);
+    letter += 1;
+}
