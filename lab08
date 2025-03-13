@@ -1,0 +1,215 @@
+//--------------------------------------------------------------------
+// Name:             
+// Date:             
+// Purp:            inLab08
+//
+// Assisted:        The entire class of EENG 383
+// Assisted by:     Microchips 18F26K22 Tech Docs 
+//-
+//- Academic Integrity Statement: I certify that, while others may have
+//- assisted me in brain storming, debugging and validating this program,
+//- the program itself is my own work. I understand that submitting code
+//- which is the work of other individuals is a violation of the course
+//- Academic Integrity Policy and may result in a zero credit for the
+//- assignment, or course failure and a report to the Academic Dishonesty
+//- Board. I also understand that if I knowingly give my original work to
+//- another individual that it could also result in a zero credit for the
+//- assignment, or course failure and a report to the Academic Dishonesty
+//- Board.
+//------------------------------------------------------------------------
+#include <pic18f25k22.h>
+
+#include "mcc_generated_files/mcc.h"
+#pragma warning disable 520     // warning: (520) function "xyz" is never called  3
+#pragma warning disable 1498    // fputc.c:16:: warning: (1498) pointer (unknown)
+
+#define     BUFFER_SIZE         512
+#define     MAX_NUM_CROSSINGS   20
+
+void INIT_PIC(void);
+void myTMR0ISR(void);
+
+uint8_t micBuffer[BUFFER_SIZE];
+uint8_t fillBuffer = false;
+uint8_t upperThresh = 128 + 10;
+uint8_t lowerThresh = 128 - 10;
+
+//----------------------------------------------
+// Main "function"
+//----------------------------------------------
+
+void main(void) {
+
+    char cmd;
+    uint16_t i;
+    
+    SYSTEM_Initialize();
+
+    // BEFORE enabling interrupts, otherwise that while loop becomes an
+    // infinite loop.  Doing this to give EUSART1's baud rate generator time
+    // to stablize - this will make the splash screen looks better
+    TMR0_WriteTimer(0x0000);
+    INTCONbits.TMR0IF = 0;
+    while (INTCONbits.TMR0IF == 0);
+
+    TMR0_SetInterruptHandler(myTMR0ISR);
+    INTERRUPT_GlobalInterruptEnable();
+    INTERRUPT_PeripheralInterruptEnable();
+
+    printf("inLab 08\r\n");
+    printf("Microphone experiments\r\n");
+    printf("Dev'21\r\n");
+    printf("> "); // print a nice command prompt
+
+    for (;;) {
+
+        if (EUSART1_DataReady) { // wait for incoming data on USART
+            cmd = EUSART1_Read();
+            switch (cmd) { // and do what it tells you to do
+
+                case '?':
+                    printf("------------------------------\r\n");
+                    printf("?: Help menu\r\n");
+                    printf("o: k\r\n");
+                    printf("Z: Reset processor\r\n");
+                    printf("z: Clear the terminal\r\n");
+                    printf("T/t: Increase/decrease mic sensitivity\r\n");
+                    printf("f: Calculate average period and frequency of an audio sample\r\n");
+                    printf("------------------------------\r\n");
+                    break;
+
+                    //--------------------------------------------
+                    // Reply with "k", used for PC to PIC test
+                    //--------------------------------------------    
+                case 'o':
+                    printf(" k\r\n>");
+                    break;
+
+                    //--------------------------------------------
+                    // Reset the processor after clearing the terminal
+                    //--------------------------------------------                      
+                case 'Z':
+                    for (i = 0; i < 40; i++) printf("\n");
+                    RESET();
+                    break;
+
+                    //--------------------------------------------
+                    // Clear the terminal
+                    //--------------------------------------------                      
+                case 'z':
+                    for (i = 0; i < 40; i++) printf("\n>");
+                    break;
+                    
+                case 'T':
+                    lowerThresh += 5;
+                    upperThresh += 5;
+                    printf("Threshold increased by 5\r\n");
+                    break;
+                    
+                case 't':
+                    lowerThresh -= 5;
+                    upperThresh -= 5;
+                    printf("Threshold decreased by 5\r\n");
+                    break;
+                                      
+                case 'f':
+                    uint8_t crossingIndex = 0;
+                    uint8_t numCrossings = 0;
+                    uint16_t edgeCrossings[MAX_NUM_CROSSINGS];
+                    uint16_t bufferIndex = 0;
+                    fillBuffer = true;
+                    while (fillBuffer == true);
+                    
+                    for (bufferIndex = 0; bufferIndex < BUFFER_SIZE - 1; bufferIndex++) {
+                        if ( micBuffer[bufferIndex] <= 128 && micBuffer[bufferIndex + 1] > 128 ) {
+                            edgeCrossings[crossingIndex] = bufferIndex;
+                            crossingIndex++;
+                            numCrossings++;
+                        }
+                    }
+                    
+                    printf("The last %u ADC samples from the microphone are:\r\n", BUFFER_SIZE);
+                    for (bufferIndex = 0; bufferIndex < BUFFER_SIZE; bufferIndex++) {
+                        if (bufferIndex % 16 == 0) {
+                            printf("S[%3d] ", bufferIndex);
+                        }
+                        printf("%3d ", micBuffer[bufferIndex]); 
+
+                        if (bufferIndex % 16 == 15 || bufferIndex == BUFFER_SIZE - 1) {
+                            printf("\r\n"); 
+                        }
+                    }
+                    printf("\r\n");
+                    
+                    printf("The sound wave crossed at the following indicies: \r\n");
+                    for (crossingIndex = 0; crossingIndex < numCrossings; crossingIndex++) printf("%u ", edgeCrossings[crossingIndex]);
+                    printf("\r\n\n");
+                    
+                    printf("The sound wave had %u periods:\r\n", numCrossings - 1);                    
+                    uint16_t sum = 0;
+                    uint16_t difference = 0;
+                    for (crossingIndex = 0; crossingIndex < numCrossings - 1; crossingIndex++) {
+                        difference = edgeCrossings[crossingIndex + 1] - edgeCrossings[crossingIndex];
+                        printf("%u - %u = %u\r\n", edgeCrossings[crossingIndex + 1], edgeCrossings[crossingIndex], difference);
+                        sum += difference;
+                    }
+                    printf("\r\n");
+
+                    uint16_t averagePeriod = (sum * 25) / (numCrossings - 1);
+                    uint16_t frequency = 1000000 / averagePeriod ;
+
+                    printf("Average Period: %u us\r\n", averagePeriod);
+                    printf("Frequency: %u Hz\r\n", frequency);
+                    
+                    break;
+                    
+                    //--------------------------------------------
+                    // If something unknown is hit, tell user
+                    //--------------------------------------------
+                default:
+                    printf("Unknown key %c\r\n", cmd);
+                    break;
+                    
+            } // end switch
+        } // end if
+    } // end while 
+} // end main
+
+
+typedef enum {
+    MIC_IDLE, MIC_WAIT_FOR_TRIGGER, MIC_ACQUIRE
+} myTMR0states_t;
+
+void myTMR0ISR(void) {
+    
+    static uint8_t micReading;
+    while (ADCON0bits.GO_NOT_DONE == 1);
+    micReading = ADRESH;
+    ADCON0bits.GO_NOT_DONE = 1;
+    
+    static myTMR0states_t tmr0ISRstate = MIC_IDLE;
+    static uint16_t bufferIndex = 0;
+    TMR0_WriteTimer(0x10000 - (400 - TMR0_ReadTimer()));
+
+    switch (tmr0ISRstate) {
+        
+        case (MIC_IDLE):
+            if (fillBuffer == true) tmr0ISRstate = MIC_WAIT_FOR_TRIGGER;
+            break;
+        
+        case (MIC_WAIT_FOR_TRIGGER):
+            if (micReading < lowerThresh || micReading > upperThresh) tmr0ISRstate = MIC_ACQUIRE;
+            break;
+            
+        case (MIC_ACQUIRE):
+            micBuffer[bufferIndex] = micReading;
+            bufferIndex++;
+            if (bufferIndex >= BUFFER_SIZE) {
+                bufferIndex = 0;
+                fillBuffer = false;                
+                tmr0ISRstate = MIC_IDLE;
+            }
+            break;
+        
+    }
+} // end myTMR0ISR
